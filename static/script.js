@@ -18,7 +18,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const rawEl = document.getElementById("raw");
   const messageEl = document.getElementById("message");
 
-  // ---- Run button ----
   runBtn.onclick = async () => {
     messageEl.className = "hidden";
     const sql = sqlEl.value.trim();
@@ -45,6 +44,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const data = await resp.json();
+      console.log("Response:", data);
       renderResults(data);
 
     } catch (err) {
@@ -55,7 +55,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  // ---- Clear button ----
   clearBtn.onclick = () => {
     sqlEl.value = "";
     resultsEl.className = "hidden";
@@ -71,83 +70,17 @@ document.addEventListener("DOMContentLoaded", () => {
     messageEl.className = "hidden";
   };
 
-  // ---- Helper: Show message ----
   function showMessage(text, type = "info") {
     messageEl.textContent = text;
     messageEl.className = type === "error" ? "error" : "info";
     messageEl.classList.remove("hidden");
   }
 
-  // ---- Helper: Render API response ----
-  function renderResults(data) {
-    resultsEl.classList.remove("hidden");
-
-    // Summary
-    summaryEl.textContent = `Database: ${data.database_used || "unknown"}
-Query: ${data.original_query}
-Tables in schema: ${Object.keys(data.schema_context || {}).length}`;
-
-    // Optimizer details
-    const details = data.analysis || {};
-    optQueryEl.textContent = details.optimized_query || "⚠ No optimized query provided.";
-
-    // Recommendations → list
-    if (details.recommendations && details.recommendations.length > 0) {
-      recsEl.innerHTML = "<ul>" + details.recommendations.map(r => `<li>${r}</li>`).join("") + "</ul>";
-    } else {
-      recsEl.textContent = "None";
-    }
-
-    // Warnings → list
-    if (details.warnings && details.warnings.length > 0) {
-      warningsEl.innerHTML = "<ul>" + details.warnings.map(w => `<li>${w}</li>`).join("") + "</ul>";
-    } else {
-      warningsEl.textContent = "None";
-    }
-
-    // Estimated impact
-    impactEl.textContent = details.estimated_impact || "Unknown";
-
-    // AI Notes → format sub-agent outputs
-    if (details.ai_details) {
-      let html = "";
-      for (const [agent, data] of Object.entries(details.ai_details)) {
-        html += `<h4>${agent.replace('_', ' ').toUpperCase()}</h4>`;
-        if (data.status === "success") {
-          html += `<pre>${JSON.stringify(data.details, null, 2)}</pre>`;
-        } else {
-          html += `<p>Error: ${data.details?.error || "Unknown"}</p>`;
-        }
-      }
-      aiNotesEl.innerHTML = html;
-    } else {
-      aiNotesEl.textContent = "None";
-    }
-
-    // Explain Plan → table
-    if (Array.isArray(data.explain_plan) && data.explain_plan.length > 0) {
-      planEl.innerHTML = makeTable(data.explain_plan);
-    } else {
-      planEl.textContent = "⚠ No explain plan returned.";
-    }
-
-    // Sample Rows → table
-    if (data.sample_rows && data.sample_rows.rows && data.sample_rows.rows.length > 0) {
-      rowsEl.innerHTML = makeTable(data.sample_rows.rows);
-      if (data.sample_rows.message) {
-        rowsEl.innerHTML += `<p><em>${data.sample_rows.message}</em></p>`;
-      }
-    } else if (data.sample_rows && data.sample_rows.error) {
-      rowsEl.textContent = "⚠ Error fetching rows: " + data.sample_rows.error;
-    } else {
-      rowsEl.textContent = "⚠ No sample rows returned.";
-    }
-
-    // Raw JSON
-    renderRawJson(data);
+  function escapeHtml(text) {
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+    return String(text).replace(/[&<>"']/g, m => map[m]);
   }
 
-  // ---- Helper: Convert JSON array → HTML table ----
   function makeTable(rows) {
     if (!Array.isArray(rows) || rows.length === 0) return "<p>No data</p>";
 
@@ -166,28 +99,136 @@ Tables in schema: ${Object.keys(data.schema_context || {}).length}`;
     return html;
   }
 
-  // ---- Render raw JSON (structured) ----
-  function renderRawJson(data) {
-    let html = "";
+  function renderResults(data) {
+    resultsEl.classList.remove("hidden");
 
-    // Schema context
-    if (data.schema_context) {
-      html += `<h3>📂 Schema Context</h3>`;
-      for (const [table, cols] of Object.entries(data.schema_context)) {
-        html += `<h4>Table: ${table}</h4>`;
-        html += makeTable(cols);
-      }
+    const db = data.database || data.database_used || "unknown";
+    const query = data.original_query || "";
+    const summary = data.summary || {};
+    const opt = data.optimization || {};
+    const cost = data.cost_analysis || {};
+    const schema = data.schema_improvements || {};
+    const validator = data.data_quality || {};
+    const technical = data.technical_details || {};
+
+    summaryEl.innerHTML = `<h3>📊 Analysis Summary</h3>
+<p><strong>Database:</strong> ${db}</p>
+<p><strong>Performance Impact:</strong> <span class="impact-${(summary.performance_impact || "unknown").toLowerCase()}">${summary.performance_impact || "Unknown"}</span></p>
+<p><strong>Key Findings:</strong> ${summary.optimization_reason || "Query analyzed"}</p>`;
+
+    if (opt.status === "success") {
+      const optimizedQuery = opt.optimized_query || query;
+      optQueryEl.innerHTML = `<strong>Optimized Query:</strong><pre>${escapeHtml(optimizedQuery)}</pre>
+<p><strong>Why Faster:</strong> ${opt.why_faster || "See recommendations below"}</p>`;
+    } else {
+      optQueryEl.innerHTML = "<p>⚠ Optimization analysis in progress</p>";
     }
 
-    // Database info
-    if (data.database_used) {
-      html += `<p><strong>Database used:</strong> ${data.database_used}</p>`;
+    if (opt.recommendations && opt.recommendations.length > 0) {
+      recsEl.innerHTML = "<strong>💡 Optimization Tips:</strong><ul>" + opt.recommendations.map(r => `<li>${r}</li>`).join("") + "</ul>";
+    } else {
+      recsEl.innerHTML = "<p>✓ No specific optimizations needed</p>";
+    }
+
+    if (opt.warnings && opt.warnings.length > 0) {
+      warningsEl.innerHTML = "<strong>⚠ Warnings:</strong><ul>" + opt.warnings.map(w => `<li>${w}</li>`).join("") + "</ul>";
+    } else {
+      warningsEl.innerHTML = "<p>✓ No issues detected</p>";
+    }
+
+    impactEl.innerHTML = `<strong>Impact Level:</strong> ${opt.estimated_impact || "Unknown"}`;
+    if (opt.engine_advice && opt.engine_advice.length > 0) {
+      impactEl.innerHTML += `<br><strong>🔧 Engine Tips:</strong><ul>${opt.engine_advice.map(a => `<li>${a}</li>`).join("")}</ul>`;
+    }
+
+    let aiHTML = "";
+
+    aiHTML += `<h4>💰 Cost Analysis</h4>`;
+    if (cost.status === "success") {
+      aiHTML += `<p><strong>Estimated Cost:</strong> <strong class="cost-${(cost.estimated_cost || "medium").toLowerCase()}">${cost.estimated_cost || "Medium"}</strong></p>`;
+      if (cost.cost_saving_tips && cost.cost_saving_tips.length > 0) {
+        aiHTML += `<ul>${cost.cost_saving_tips.map(t => `<li>${t}</li>`).join("")}</ul>`;
+      }
+      if (cost.warnings && cost.warnings.length > 0) {
+        aiHTML += `<p><strong>Warnings:</strong><ul>${cost.warnings.map(w => `<li>${w}</li>`).join("")}</ul></p>`;
+      }
+    } else {
+      aiHTML += `<p>⚠ ${cost.error || "Cost analysis unavailable"}</p>`;
+    }
+
+    aiHTML += `<h4>🗄️ Schema Improvements</h4>`;
+    if (schema.status === "success") {
+      if (schema.recommended_indexes && schema.recommended_indexes.length > 0) {
+        aiHTML += `<p><strong>Recommended Indexes:</strong></p><ul>${schema.recommended_indexes.map(idx => `<li><code>${escapeHtml(idx)}</code></li>`).join("")}</ul>`;
+      }
+      if (schema.schema_changes && schema.schema_changes.length > 0) {
+        aiHTML += `<p><strong>Schema Changes:</strong></p><ul>${schema.schema_changes.map(change => `<li>${escapeHtml(change)}</li>`).join("")}</ul>`;
+      }
+      if (!schema.recommended_indexes && !schema.schema_changes) {
+        aiHTML += `<p>✓ Current schema is well-designed</p>`;
+      }
+    } else if (schema.status === "unsafe") {
+      aiHTML += `<p>⚠️ Query contains unsafe operations</p>`;
+    } else {
+      aiHTML += `<p>⚠ ${schema.error || "Schema analysis unavailable"}</p>`;
+    }
+
+    aiHTML += `<h4>✅ Data Quality</h4>`;
+    if (validator.status === "success") {
+      if (validator.issues && validator.issues.length > 0) {
+        aiHTML += `<p><strong>Issues Found (${validator.confidence || "Medium"} confidence):</strong></p><ul>${validator.issues.map(issue => `<li>${issue}</li>`).join("")}</ul>`;
+        if (validator.reasoning) aiHTML += `<p><em>${validator.reasoning}</em></p>`;
+      } else {
+        aiHTML += `<p>✓ Data quality looks good</p>`;
+        if (validator.reasoning) aiHTML += `<p><em>${validator.reasoning}</em></p>`;
+      }
+    } else {
+      aiHTML += `<p>⚠ ${validator.error || "Data validation unavailable"}</p>`;
+    }
+
+    aiNotesEl.innerHTML = aiHTML;
+
+    if (Array.isArray(technical.explain_plan) && technical.explain_plan.length > 0) {
+      planEl.innerHTML = makeTable(technical.explain_plan);
+    } else {
+      planEl.innerHTML = "<p>⚠ No explain plan available</p>";
+    }
+
+    if (technical.sample_rows && technical.sample_rows.rows && technical.sample_rows.rows.length > 0) {
+      rowsEl.innerHTML = makeTable(technical.sample_rows.rows);
+      if (technical.sample_rows.message) {
+        rowsEl.innerHTML += `<p><em>${technical.sample_rows.message}</em></p>`;
+      }
+    } else if (technical.sample_rows && technical.sample_rows.error) {
+      rowsEl.innerHTML = `<p>⚠ ${technical.sample_rows.error}</p>`;
+    } else {
+      rowsEl.innerHTML = "<p>⚠ No sample data available</p>";
+    }
+
+    renderRawJson(technical);
+  }
+
+  function renderRawJson(technical) {
+    let html = "";
+
+    if (technical.schema_context) {
+      html += `<h3>📂 Schema Context</h3>`;
+      const schema = technical.schema_context;
+      if (typeof schema === "object" && !Array.isArray(schema)) {
+        for (const [table, cols] of Object.entries(schema)) {
+          html += `<h4>Table: <code>${escapeHtml(table)}</code></h4>`;
+          if (Array.isArray(cols)) {
+            html += makeTable(cols);
+          } else if (cols && typeof cols === "object") {
+            html += `<p>${JSON.stringify(cols)}</p>`;
+          }
+        }
+      }
     }
 
     rawEl.innerHTML = html;
   }
 
-  // ---- Schema analysis ----
   async function analyzeSchema() {
     const response = await fetch("/analyze-schema", { method: "POST" });
     const data = await response.json();
@@ -199,6 +240,5 @@ Tables in schema: ${Object.keys(data.schema_context || {}).length}`;
     `;
   }
 
-  // Expose for button onclick
   window.analyzeSchema = analyzeSchema;
 });

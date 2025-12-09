@@ -12,6 +12,6 @@ class Config:
     DB_PASSWORD = os.getenv("DB_PASSWORD", "app_pass123")
     DB_NAME = os.getenv("DB_NAME", "testdb")
 
-    # Anthropic Claude API
-    CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
+    # Groq API
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
